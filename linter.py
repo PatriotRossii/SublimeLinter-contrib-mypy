@@ -50,6 +50,13 @@ locks = defaultdict(lambda: threading.Lock())  # type: DefaultDict[Optional[str]
 
 class Mypy(PythonLinter):
     """Provides an interface to mypy."""
+    cmd = (
+            'mypy',
+            '${args}',
+            '--show-column-numbers',
+            '--hide-error-context',
+            '-'
+    )
 
     regex = (
         r'^(?P<filename>.+?):(?P<line>\d+):((?P<col>\d+):)?\s*'
@@ -69,56 +76,6 @@ class Mypy(PythonLinter):
         # Need this to silent lints for other files. Alternatively: 'skip'
         "--follow-imports": "silent",
     }
-
-    def cmd(self):
-        """Return a list with the command line to execute."""
-        cmd = [
-            'mypy',
-            '${args}',
-            '--show-column-numbers',
-            '--hide-error-context',
-        ]
-        if self.filename:
-            cmd.extend([
-                # --shadow-file SOURCE_FILE SHADOW_FILE
-                #
-                # '@' needs to be the (temporary) shadow file,
-                # while we request the normal filename
-                # to be checked in its normal environment.
-                '--shadow-file', '${file}', '${temp_file}',
-                # The file we want to lint on the surface
-                '${file}',
-            ])
-        else:
-            cmd.append('${temp_file}')
-
-        # Compare against `''` so the user can set just `False`,
-        # for example if the cache is configured in "mypy.ini".
-        if self.settings.get('cache-dir') == '':
-            cwd = self.get_working_dir()
-            if not cwd:  # abort silently
-                self.notify_unassign()
-                raise PermanentError()
-
-            if os.path.exists(os.path.join(cwd, '.mypy_cache')):
-                self.settings.set('cache-dir', False)  # do not set it as arg
-            else:
-                # Add a temporary cache dir to the command if none was specified.
-                # Helps keep the environment clean by not littering everything
-                # with `.mypy_cache` folders.
-                try:
-                    cache_dir = tmpdirs[cwd].name
-                except KeyError:
-                    tmpdirs[cwd] = tmp_dir = _get_tmpdir(cwd)
-                    cache_dir = tmp_dir.name
-
-                self.settings.set('cache-dir', cache_dir)
-
-        return cmd
-
-    def run(self, cmd, code):
-        with locks[self.get_working_dir()]:
-            return super().run(cmd, code)
 
 
 class FakeTemporaryDirectory:
